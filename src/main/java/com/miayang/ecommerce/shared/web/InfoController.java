@@ -23,9 +23,12 @@ public class InfoController {
 
     @GetMapping("/info")
     public Map<String, Object> info() {
+
         return Map.of(
                 "app", appName,
+                "version", "0.1.0",
                 "stage", "monolith",
                 "modules", new String[] {"user", "product", "order"});
+
     }
 }
