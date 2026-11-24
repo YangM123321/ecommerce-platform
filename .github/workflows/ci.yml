@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      # Runs unit tests, the Testcontainers Postgres test and the ArchUnit boundary rules.
+      # Docker is preinstalled on GitHub's ubuntu runners, so Testcontainers works.
+      - name: Build and test
+        run: mvn -B verify
+
+      - name: Check the Docker image builds
+        run: docker build -t ecommerce-platform:ci .
