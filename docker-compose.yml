@@ -27,6 +27,9 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/ecommerce
       DB_USERNAME: ${POSTGRES_USER:-ecommerce}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-ecommerce}
+      JWT_SECRET: ${JWT_SECRET:-local-docker-secret-change-me-0123456789}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@local.test}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin123!}
     ports:
       - "8080:8080"
     depends_on:

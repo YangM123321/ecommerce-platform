@@ -30,3 +30,16 @@ management:
     health:
       probes:
         enabled: true      # /actuator/health/liveness and /readiness, used by Kubernetes in Session 5
+
+app:
+  jwt:
+    # Dev-only default so the app starts locally. Real deployments MUST set JWT_SECRET
+    # (at least 32 characters). Never commit a real secret.
+    secret: ${JWT_SECRET:dev-only-secret-change-me-0123456789abcdef}
+    issuer: ecommerce-platform
+    access-token-ttl: 15m
+    refresh-token-ttl: 7d
+  # First admin account, created at startup if both values are set (see AdminBootstrap).
+  admin:
+    email: ${ADMIN_EMAIL:}
+    password: ${ADMIN_PASSWORD:}
