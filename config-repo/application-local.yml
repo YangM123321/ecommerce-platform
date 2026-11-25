@@ -1,0 +1,10 @@
+# Local environment (Docker Compose on your PC).
+
+db:
+  host: ${DB_HOST:localhost}
+  port: 5432
+  params: ""          # no extra JDBC options locally
+
+logging:
+  level:
+    com.miayang.ecommerce: DEBUG

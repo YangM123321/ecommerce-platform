@@ -1,0 +1,25 @@
+server:
+  port: 8761
+
+spring:
+  application:
+    name: discovery-server
+
+eureka:
+  client:
+    # This IS the registry, so it doesn't register with itself or fetch from anyone.
+    register-with-eureka: false
+    fetch-registry: false
+  server:
+    # Refresh the registry answer every 5 s instead of 30 s, so a stopped service
+    # disappears quickly (useful for the failure demo).
+    response-cache-update-interval-ms: 5000
+    eviction-interval-timer-in-ms: 5000
+    # Self-preservation keeps dead instances listed when many stop at once; off for local dev.
+    enable-self-preservation: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

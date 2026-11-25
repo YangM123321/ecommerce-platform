@@ -1,0 +1,15 @@
+# Test-only overrides (classpath:/config/ beats classpath:/application.yml).
+# Tests run without config-server and Eureka; Testcontainers provides the database.
+spring:
+  cloud:
+    config:
+      enabled: false
+eureka:
+  client:
+    enabled: false
+app:
+  jwt:
+    secret: test-secret-at-least-32-bytes-long-0123456789
+    issuer: ecommerce-platform
+    access-token-ttl: 15m
+    refresh-token-ttl: 7d

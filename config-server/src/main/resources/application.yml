@@ -1,0 +1,41 @@
+server:
+  port: 8888
+
+spring:
+  application:
+    name: config-server
+  profiles:
+    # "native" = read config-repo/ from a folder (works before anything is pushed).
+    # "git"    = read config-repo/ from the GitHub repository (the real setup).
+    active: ${CONFIG_BACKEND:native}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+---
+spring:
+  config:
+    activate:
+      on-profile: native
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: ${CONFIG_REPO_PATH:file:./config-repo}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: git
+  cloud:
+    config:
+      server:
+        git:
+          uri: ${CONFIG_GIT_URI:https://github.com/YangM123321/ecommerce-platform}
+          default-label: main
+          search-paths: config-repo
+          clone-on-start: true

@@ -1,0 +1,11 @@
+# Azure environment (Session 5: AKS + Azure Database for PostgreSQL).
+# Values come from Kubernetes Secrets / environment variables, never from this file.
+
+db:
+  host: ${DB_HOST}
+  port: 5432
+  params: "?sslmode=require"   # Azure PostgreSQL only accepts encrypted connections
+
+logging:
+  level:
+    com.miayang.ecommerce: INFO

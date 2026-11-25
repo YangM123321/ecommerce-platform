@@ -1,46 +1,120 @@
-# Local development stack.
-# Session 1: Postgres + the app.
+# Local development stack - Session 4: microservices.
+#
+#   client -> api-gateway:8080 -> (Eureka lookup) -> user / product / order service
+#   every service reads its settings from config-server:8888 at startup
+#
+# Start:   docker compose up --build -d
+# Status:  docker compose ps            Eureka dashboard: http://localhost:8761
+# Reset:   docker compose down -v       (wipes the databases)
 # Later sessions add: Kafka (7), Redis (8), ELK + Prometheus + Grafana (9).
+
+x-service-env: &service-env
+  SPRING_PROFILES_ACTIVE: local
+  CONFIG_SERVER_URL: http://config-server:8888
+  EUREKA_URL: http://discovery-server:8761/eureka
+  DB_HOST: postgres
+  DB_USERNAME: ${POSTGRES_USER:-ecommerce}
+  DB_PASSWORD: ${POSTGRES_PASSWORD:-ecommerce}
+  JWT_SECRET: ${JWT_SECRET:-local-docker-secret-change-me-0123456789}
+
+x-healthcheck: &healthcheck
+  interval: 10s
+  timeout: 3s
+  retries: 15
+  start_period: 30s
 
 services:
   postgres:
     image: postgres:16-alpine
     container_name: ecommerce-postgres
     environment:
-      POSTGRES_DB: ecommerce
       POSTGRES_USER: ${POSTGRES_USER:-ecommerce}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ecommerce}
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ecommerce} -d ecommerce"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ecommerce} -d orders_db"]
       interval: 5s
       timeout: 3s
-      retries: 10
+      retries: 20
 
-  app:
-    build: .
-    container_name: ecommerce-app
+  config-server:
+    build: { context: ., args: { MODULE: config-server } }
+    container_name: ecommerce-config-server
     environment:
-      DB_URL: jdbc:postgresql://postgres:5432/ecommerce
-      DB_USERNAME: ${POSTGRES_USER:-ecommerce}
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-ecommerce}
-      JWT_SECRET: ${JWT_SECRET:-local-docker-secret-change-me-0123456789}
+      CONFIG_BACKEND: ${CONFIG_BACKEND:-native}          # native = read ./config-repo; git = read GitHub
+      CONFIG_REPO_PATH: file:/config-repo
+    volumes:
+      - ./config-repo:/config-repo:ro
+    ports:
+      - "8888:8888"
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8888/actuator/health | grep -q UP"]
+
+  discovery-server:
+    build: { context: ., args: { MODULE: discovery-server } }
+    container_name: ecommerce-discovery-server
+    ports:
+      - "8761:8761"
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8761/actuator/health | grep -q UP"]
+
+  user-service:
+    build: { context: ., args: { MODULE: user-service } }
+    container_name: ecommerce-user-service
+    environment:
+      <<: *service-env
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@local.test}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin123!}
-    ports:
-      - "8080:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
+    depends_on: &infra-ready
+      postgres: { condition: service_healthy }
+      config-server: { condition: service_healthy }
+      discovery-server: { condition: service_healthy }
     healthcheck:
+      <<: *healthcheck
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/actuator/health | grep -q UP"]
+
+  product-service:
+    build: { context: ., args: { MODULE: product-service } }
+    container_name: ecommerce-product-service
+    environment:
+      <<: *service-env
+    depends_on: *infra-ready
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/actuator/health | grep -q UP"]
+
+  order-service:
+    build: { context: ., args: { MODULE: order-service } }
+    container_name: ecommerce-order-service
+    environment:
+      <<: *service-env
+    depends_on: *infra-ready
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8083/actuator/health | grep -q UP"]
+
+  api-gateway:
+    build: { context: ., args: { MODULE: api-gateway } }
+    container_name: ecommerce-api-gateway
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      CONFIG_SERVER_URL: http://config-server:8888
+      EUREKA_URL: http://discovery-server:8761/eureka
+      JWT_SECRET: ${JWT_SECRET:-local-docker-secret-change-me-0123456789}
+    ports:
+      - "8080:8080"       # the ONLY port clients need. Services have no published ports.
+    depends_on:
+      config-server: { condition: service_healthy }
+      discovery-server: { condition: service_healthy }
+    healthcheck:
+      <<: *healthcheck
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP"]
-      interval: 10s
-      timeout: 3s
-      retries: 12
-      start_period: 20s
 
 volumes:
   postgres-data:

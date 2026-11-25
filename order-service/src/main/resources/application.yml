@@ -1,0 +1,22 @@
+# Settings built into the order-service jar. Environment-specific settings (database, JWT secret,
+# Eureka address) come from config-server; see config-repo/order-service.yml.
+
+server:
+  port: 8083
+  # Finish requests in flight on shutdown, so Eureka deregistration is clean.
+  shutdown: graceful
+
+spring:
+  application:
+    name: order-service
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  config:
+    # "optional:" lets tests start without a config server.
+    import: "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate   # Flyway owns the schema; Hibernate only checks it
+  flyway:
+    locations: classpath:db/migration

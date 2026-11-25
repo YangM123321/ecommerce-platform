@@ -1,40 +1,148 @@
-# Architecture (modular monolith)
+# Architecture (microservices, Session 4)
 
-One Spring Boot app, three modules, one Postgres database with one schema per module.
-GitHub renders the Mermaid diagrams below automatically.
+Six Spring Boot apps plus Postgres. Each business service owns one database; services only talk
+over HTTP. GitHub renders the Mermaid diagrams below automatically.
 
-## Module diagram
+## Component diagram
 
 ```mermaid
 flowchart LR
-    client[Client / Postman] --> app
+    client["Client / Postman"] -->|"HTTP :8080"| gw
 
-    subgraph app[ecommerce-platform - one Spring Boot app]
-        direction TB
-        user[user module<br/>api + internal]
-        product[product module<br/>api + internal]
-        order[order module<br/>api + internal]
-        order -- "uses user.api" --> user
-        order -- "uses product.api" --> product
+    subgraph edge[Edge]
+        gw["api-gateway :8080<br/>routing + JWT check"]
     end
 
-    subgraph db[PostgreSQL]
-        s1[(schema: users)]
-        s2[(schema: catalog)]
-        s3[(schema: ordering)]
+    subgraph platform[Platform services]
+        cfg["config-server :8888<br/>settings per service + profile"]
+        eur["discovery-server :8761<br/>Eureka registry"]
     end
 
-    user --> s1
-    product --> s2
-    order --> s3
+    subgraph business[Business services]
+        us["user-service :8081<br/>auth, users, roles"]
+        ps["product-service :8082<br/>catalog, stock"]
+        os["order-service :8083<br/>orders"]
+    end
+
+    gw -->|"lb://user-service"| us
+    gw -->|"lb://product-service"| ps
+    gw -->|"lb://order-service"| os
+    os -->|"OpenFeign, JWT forwarded<br/>/internal lookup, reserve, release"| ps
+
+    us -.->|register + heartbeat| eur
+    ps -.->|register + heartbeat| eur
+    os -.->|register + heartbeat| eur
+    gw -.->|fetch registry| eur
+
+    us -.->|config at startup| cfg
+    ps -.->|config at startup| cfg
+    os -.->|config at startup| cfg
+    gw -.->|config at startup| cfg
+    cfg -.->|"native: ./config-repo<br/>git: GitHub main"| repo[("config-repo")]
+
+    us --> udb[("users_db")]
+    ps --> pdb[("catalog_db")]
+    os --> odb[("orders_db")]
 ```
 
-Rules:
-- A module only reads and writes its own schema.
-- Other modules call it only through its `api` package. `ModuleBoundariesTest` enforces this.
-- In Session 4 each module becomes its own service, and each schema its own database.
-- Today the order module calls the product module through `product.api` (a Java interface).
-  It gets the user id from the JWT, so it doesn't need to call the user module at all.
+Solid arrows = request traffic. Dotted arrows = platform traffic (registration, config).
+The three databases live on one Postgres container locally; nothing joins across them.
+
+## What changed from the monolith
+
+| Before (Session 3) | Now (Session 4) |
+|---|---|
+| One app, one deploy | 6 apps, each built and deployed on its own (`docker compose up --build order-service`) |
+| One database, 3 schemas | 3 databases, one per service |
+| `application.yml` inside the jar | Config Server serves `config-repo/`, with `local` and `azure` profiles |
+| order module calls `ProductCatalogApi` (a Java call) | order-service calls product-service over HTTP via OpenFeign, found by name in Eureka |
+| One database transaction for "reserve stock + save order" | Two local transactions plus a compensating `release` if saving fails |
+| Client talks to the app on 8080 | Client talks to the gateway on 8080; services aren't exposed |
+
+## New failure points (and what we do about each)
+
+A Java method call can't time out or find the other side switched off. An HTTP call can.
+
+| Failure | What the customer sees | How it's handled |
+|---|---|---|
+| product-service down | Browse: 503. Place order: 503. Login, profile, my orders: still work | Gateway and Feign find no instance in Eureka; `RemoteProductCatalog` turns it into a clean 503 |
+| product-service slow | 503 after 3 s instead of hanging | Feign timeouts: connect 2 s, read 3 s. Gateway response timeout 5 s |
+| Not enough stock | 409 with product-service's message | product-service rolls back all lines; order-service passes the message on |
+| orders_db fails after stock was reserved | 500, stock returned | Compensating action: `release` the reserved stock |
+| Reply lost after stock was reserved (timeout) | 503, stock stays reserved | **Known gap.** Fixed in Session 7 with Kafka events + idempotency |
+| Cancel while product-service is down | 503, order stays CONFIRMED, retry later | Release happens inside the local transaction, so a failure rolls back the cancel |
+| Config server down at startup | Service won't start (compose waits for it to be healthy) | Running services keep their config; only new starts need it |
+| Eureka down | Existing calls keep working for a while | Clients cache the registry; new instances can't be found until it's back |
+| Stale registry right after a stop | A few seconds of errors | Graceful shutdown deregisters; fetch interval and LB cache cut to 5 s |
+
+## Placing an order across services
+
+```mermaid
+sequenceDiagram
+    actor C as Customer
+    participant G as api-gateway
+    participant O as order-service
+    participant P as product-service
+    participant ODB as orders_db
+    participant PDB as catalog_db
+
+    C->>G: POST /api/orders, Bearer token
+    G->>G: verify JWT (401 if bad)
+    G->>O: forward (found via Eureka)
+    O->>O: verify JWT again, merge lines
+    O->>P: POST /internal/products/lookup
+    P->>PDB: select active products
+    P-->>O: names + prices
+    O->>P: POST /internal/stock/reservations (all lines)
+    Note over P,PDB: one transaction in product-service, all lines or none
+    alt short of stock
+        P-->>O: 409
+        O-->>C: 409 Conflict, nothing saved
+    else product-service unreachable
+        O-->>C: 503, nothing saved
+    else reserved
+        P-->>O: 204
+        O->>ODB: insert order + items (own transaction)
+        alt save fails
+            O->>P: POST /internal/stock/releases (compensation)
+            O-->>C: 500
+        else saved
+            O-->>C: 201 Created, CONFIRMED
+        end
+    end
+```
+
+Design decisions:
+- **No database transaction held during network calls.** `placeOrder` is not `@Transactional`;
+  only the final save runs in a `TransactionTemplate`. Holding a transaction while waiting on the
+  network would tie up connections and locks for as long as the network is slow.
+- **One reservation call for all lines**, so product-service can keep it all-or-nothing in one
+  local transaction (and keep the product-id ordering that prevents deadlocks).
+- **`/internal/**` endpoints are not routed by the gateway.** They still require a valid JWT:
+  order-service forwards the customer's token (`FeignConfig`).
+- **JWT checked twice:** at the gateway (reject early, protect services) and in each service
+  (zero trust: a request that gets past the gateway, or comes from inside, is still checked).
+- **Still no call to user-service:** the user id comes from the JWT `sub` claim.
+- **The gateway is reactive** (WebFlux), so it has its own small security config instead of
+  using the `common` module, which is Spring MVC.
+
+## Configuration
+
+```
+config-repo/
+  application.yml           shared by every service: JWT, Eureka, actuator
+  application-local.yml     profile local: Postgres on localhost / compose
+  application-azure.yml     profile azure: Azure Postgres with sslmode=require
+  user-service.yml          one file per service: its database, its own settings
+  product-service.yml
+  order-service.yml         Feign timeouts
+  api-gateway.yml
+```
+
+A service asks the config server for `<name>` + `<profile>` and gets the files merged
+(most specific wins). Secrets are never in the repo: files use `${JWT_SECRET}`-style placeholders
+filled from environment variables. Backend: `native` (read the folder, default in compose) or
+`git` (read `config-repo/` on GitHub `main`): `set CONFIG_BACKEND=git` before `docker compose up`.
 
 ## User module classes (Session 2)
 
@@ -168,55 +276,25 @@ classDiagram
     ProductCatalogApiImpl --> InventoryRepository
 ```
 
-- `ProductCatalogApi` (package `product.api`) is the only door into the product module.
-  `ModuleBoundariesTest` fails the build if the order module touches `product.internal`.
+- Session 4: `ProductCatalogApi` is gone. order-service now has its own `ProductCatalog` port,
+  implemented by `RemoteProductCatalog` over HTTP. The boundary is enforced by Maven modules
+  (order-service simply can't import product-service classes), so the ArchUnit test was retired.
 - `CustomerOrder.userId` and `OrderItem.productId` are plain ids, not JPA relationships and not
   foreign keys across schemas, so the modules can move to separate databases in Session 4.
 - Order items copy the product name and price at order time.
-
-## Placing an order (Session 3)
-
-```mermaid
-sequenceDiagram
-    actor C as Customer
-    participant O as OrderService
-    participant P as ProductCatalogApi
-    participant DB as Postgres
-
-    C->>O: POST /api/orders with items
-    Note over O,DB: One database transaction from here
-    O->>O: merge duplicate lines, sort by product id
-    O->>P: findActiveProducts(ids)
-    P->>DB: select active products
-    loop each product
-        O->>P: reserveStock(id, qty)
-        P->>DB: update inventory only if enough is available
-    end
-    alt any product short of stock
-        O-->>C: 409 Conflict, whole transaction rolled back
-    else all reserved
-        O->>DB: insert order and order items
-        O-->>C: 201 Created, status CONFIRMED
-    end
-```
-
-Why this design:
-- **No overselling:** stock is checked and decremented in one `UPDATE ... WHERE available >= qty`.
-  The row lock makes concurrent buyers queue; `concurrentOrdersNeverOversell` proves 10 buyers
-  for 5 items gives exactly 5 orders.
-- **All or nothing:** one transaction, so a failed item undoes the other reservations.
-- **No deadlocks:** items are reserved in product-id order, so two orders never lock rows in
-  opposite order.
-- **Privacy:** someone else's order returns 404, not 403, so order ids can't be probed.
 
 ## Testing strategy
 
 | Level | Example | What it checks | Speed |
 |---|---|---|---|
-| Unit (JUnit + Mockito) | `AuthServiceTest`, `OrderServiceTest` | Business rules, e.g. refresh-token reuse revokes all sessions | milliseconds |
+| Unit (JUnit + Mockito) | `AuthServiceTest`, `OrderServiceTest`, `RemoteProductCatalogTest` | Business rules, compensation when a save fails, how remote errors become 409 / 503 / 502 | milliseconds |
 | Web slice (`@WebMvcTest`) | `UserWebLayerTest` | URLs, JSON, validation errors, status codes, security rules; service mocked | ~2 s |
-| Integration (`@SpringBootTest` + Testcontainers) | `AuthFlowIntegrationTest`, `CatalogAndOrderIntegrationTest` | Whole flow against a real Postgres, incl. concurrent orders | ~20 s |
-| Architecture (ArchUnit) | `ModuleBoundariesTest` | No module reaches into another module's `internal` package | ~1 s |
+| Service integration (`@SpringBootTest` + Testcontainers) | `AuthFlowIntegrationTest`, `ProductServiceIntegrationTest`, `OrderApiIntegrationTest` | One service against a real Postgres; other services mocked at the Feign client | ~20 s each |
+| Gateway (`WebTestClient`) | `GatewaySecurityTest` | Bad or missing tokens stopped at the edge; good ones forwarded | ~5 s |
+| System (manual / script) | `scripts/failure-demo.ps1` | Whole stack in Docker; stop product-service, the rest stays up | ~2 min |
+
+Each service's tests run with Config Server and Eureka switched off
+(`src/test/resources/config/application.yml`), so they run alone and in CI.
 
 ## Login and token refresh (Session 2)
 
