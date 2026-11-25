@@ -10,3 +10,12 @@ spring:
     web:
       pageable:
         max-page-size: 100
+
+app:
+  # Product images (Session 5). Locally: Azurite in Docker Compose. On Azure: a Storage account.
+  # The connection string contains the account key, so it only ever comes from an env variable
+  # (a Kubernetes Secret on AKS). No connection string = uploads answer 503, everything else works.
+  storage:
+    connection-string: ${STORAGE_CONNECTION_STRING:}
+    container: ${STORAGE_CONTAINER:product-images}
+    public-base-url: ${STORAGE_PUBLIC_BASE_URL:}

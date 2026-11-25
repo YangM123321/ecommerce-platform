@@ -36,6 +36,6 @@ spring:
       server:
         git:
           uri: ${CONFIG_GIT_URI:https://github.com/YangM123321/ecommerce-platform}
-          default-label: main
+          default-label: ${CONFIG_GIT_LABEL:main}   # deploy.ps1 sets this to the branch you deploy
           search-paths: config-repo
           clone-on-start: true

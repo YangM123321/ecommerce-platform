@@ -1,6 +1,9 @@
-# Architecture (microservices, Session 4)
+# Architecture (microservices, Sessions 4-5)
 
-Six Spring Boot apps plus Postgres. Each business service owns one database; services only talk
+Running on Azure (AKS, PostgreSQL, Blob Storage) is described in [azure-deploy.md](azure-deploy.md).
+This page shows the services themselves, as they run locally in Docker Compose.
+
+Six Spring Boot apps plus Postgres (and Azurite, the Blob Storage emulator, for product images). Each business service owns one database; services only talk
 over HTTP. GitHub renders the Mermaid diagrams below automatically.
 
 ## Component diagram
@@ -42,6 +45,7 @@ flowchart LR
 
     us --> udb[("users_db")]
     ps --> pdb[("catalog_db")]
+    ps -->|product images| blob[("Blob Storage<br/>Azurite locally")]
     os --> odb[("orders_db")]
 ```
 
@@ -125,6 +129,17 @@ Design decisions:
 - **Still no call to user-service:** the user id comes from the JWT `sub` claim.
 - **The gateway is reactive** (WebFlux), so it has its own small security config instead of
   using the `common` module, which is Spring MVC.
+
+## Product images (Session 5)
+
+- `POST /api/products/{id}/image` (admin, multipart): product-service checks the file's first bytes
+  (real JPEG / PNG / WebP only, at most 2 MB; the file name and Content-Type aren't trusted), stores it
+  in Blob Storage as `products/{id}/{random}.{ext}` and saves the public URL on the product.
+- Browsers load images **straight from Blob Storage** by URL: the bytes never go through the gateway
+  or the services. The container allows anonymous read of single blobs; writing needs the account key,
+  which only product-service has.
+- `ImageStorage` is an interface: `AzureBlobImageStorage` on Azure and with Azurite locally, a mock in
+  tests. Without a connection string, uploads answer 503 and everything else keeps working.
 
 ## Configuration
 

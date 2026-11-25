@@ -19,8 +19,10 @@ deploy-time comparison on the resume. Fill in your own times.
 Deploying one service only (new in Session 4): `docker compose up --build -d order-service`.
 The others keep running.
 
-In Session 5 (Azure) these grow into: build image, tag it, push to Azure Container Registry,
-`kubectl apply` the manifests for each service, watch the rollout, then smoke test the public URL.
+Session 5 (Azure): `scripts\azure\deploy.ps1` does it in one go: build 6 images, tag them with the
+commit id, push them to Azure Container Registry, `kubectl apply` the manifests, wait for each
+rollout, print the public URL. Then smoke test the public URL. Still started by hand from your PC:
+Session 6 moves it into an Azure DevOps pipeline.
 
 ## Timing log
 

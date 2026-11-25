@@ -15,3 +15,6 @@ target/
 
 # Local secrets
 .env
+
+# Azure names and generated passwords (Session 5) - never commit
+.azure-env.json

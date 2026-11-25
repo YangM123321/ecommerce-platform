@@ -14,6 +14,10 @@ spring:
   config:
     # "optional:" lets tests start without a config server.
     import: "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+  servlet:
+    multipart:
+      max-file-size: 2MB      # product images; bigger uploads get 413
+      max-request-size: 3MB
   jpa:
     open-in-view: false
     hibernate:
