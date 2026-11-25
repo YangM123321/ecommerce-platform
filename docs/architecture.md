@@ -18,7 +18,7 @@ flowchart LR
         order -- "uses product.api" --> product
     end
 
-    subgraph db[(PostgreSQL)]
+    subgraph db[PostgreSQL]
         s1[(schema: users)]
         s2[(schema: catalog)]
         s3[(schema: ordering)]
@@ -169,11 +169,11 @@ sequenceDiagram
     A-->>C: accessToken (JWT, 15 min) + refreshToken (7 days)
 
     C->>API: GET /api/users/me  Authorization: Bearer accessToken
-    API->>API: verify signature, expiry, issuer; roles claim -> ROLE_*
+    API->>API: verify signature, expiry and issuer, map roles claim to ROLE_*
     API-->>C: 200 profile
 
     C->>A: POST /api/auth/refresh {refreshToken}
-    A->>DB: find by hash; revoke it; save a new one
+    A->>DB: find by hash, revoke it, save a new one
     A-->>C: new accessToken + new refreshToken
     Note over A,DB: Reusing an old refresh token revokes ALL of the user's tokens
 ```
