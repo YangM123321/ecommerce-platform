@@ -33,7 +33,7 @@ spec:
             - name: ADMIN_PASSWORD
               valueFrom: { secretKeyRef: { name: ecommerce-secrets, key: ADMIN_PASSWORD } }
           resources:
-            requests: { cpu: 100m, memory: 448Mi }
+            requests: { cpu: 25m, memory: 448Mi }
             limits: { memory: 768Mi }
           startupProbe:
             httpGet: { path: /actuator/health/liveness, port: 8081 }

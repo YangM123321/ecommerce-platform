@@ -33,7 +33,7 @@ What lives where:
 
 | Piece | Azure service | Why this choice |
 |---|---|---|
-| Containers | AKS, 1 node `Standard_B2ms` (2 vCPU, 8 GB) | Smallest size that fits 6 JVMs; Free tier control plane |
+| Containers | AKS, 1 node `Standard_D2as_v7` (2 vCPU, 8 GB, x86) | Smallest size that fits 6 JVMs; Free tier control plane |
 | Images | Azure Container Registry, Basic | Private registry; `--attach-acr` lets AKS pull without passwords |
 | Databases | PostgreSQL Flexible Server, Burstable B1ms | Managed backups, patching, TLS. 3 databases on one server to save money |
 | Product images | Blob Storage, `product-images` container | Files don't belong in a database; browsers load them straight from storage |
@@ -55,7 +55,7 @@ Every Deployment has:
 - **startupProbe** (`/actuator/health/liveness`): up to 5 minutes for a slow JVM start before liveness checks begin.
 - **livenessProbe**: if the app hangs, Kubernetes restarts the container.
 - **readinessProbe** (`/actuator/health/readiness`): no traffic until the app is ready.
-- **Memory request and limit**, with `-XX:MaxRAMPercentage=60` so the JVM sizes its heap from the container limit.
+- **CPU request of 25m** (a scheduling reservation; the apps can still use spare CPU) and a **memory request and limit**, with `-XX:MaxRAMPercentage=60` so the JVM sizes its heap from the container limit.
 
 **Dockerfiles:** one multi-stage `Dockerfile` serves all 6 modules through the `MODULE` build
 argument (`docker build --build-arg MODULE=order-service .`). Stage 1 builds the jar with Maven,
@@ -93,6 +93,7 @@ email at 50%.
 |---|---|---|
 | `setup-azure.ps1`: "not available in this region" or quota error | Free subscriptions can't use every size in every region | `teardown.ps1`, then `setup-azure.ps1 -Location westus2` (or `centralus`) |
 | Pod stays `CrashLoopBackOff` right after deploy | Started before config-server was ready | Usually fixes itself in 1-2 minutes. Otherwise: `kubectl logs deployment/<name> -n ecommerce` |
+| Pod stays `Pending`, events say "Insufficient cpu" | The node's CPU is already reserved (AKS's own system pods take a lot of a 2-CPU node) | CPU requests are 25m per app (a reservation, not a limit: apps still use spare CPU). Still full? `az aks scale -g rg-ecommerce -n aks-ecommerce --node-count 2` |
 | Pod `OOMKilled` | Memory limit too low | Raise `limits.memory` for that service in k8s/, redeploy |
 | Pod `ImagePullBackOff` | AKS can't pull from ACR | `az aks update -g rg-ecommerce -n aks-ecommerce --attach-acr <acr name>` |
 | Service log: "password authentication failed" / "connection refused" to postgres | Wrong secret or firewall | `kubectl get secret ecommerce-secrets -n ecommerce`; check the firewall rule `AllowAllAzureServices...` in the portal |

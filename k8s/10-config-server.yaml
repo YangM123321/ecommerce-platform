@@ -28,7 +28,7 @@ spec:
             - name: JAVA_TOOL_OPTIONS
               value: "-XX:MaxRAMPercentage=60 -XX:+UseSerialGC"
           resources:
-            requests: { cpu: 100m, memory: 320Mi }
+            requests: { cpu: 25m, memory: 320Mi }
             limits: { memory: 448Mi }
           # Spring Boot turns on /actuator/health/liveness and /readiness when it runs on Kubernetes.
           startupProbe:      # slow JVM start: allow up to 5 minutes before liveness kicks in
