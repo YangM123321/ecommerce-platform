@@ -34,20 +34,82 @@ Rules:
 - Other modules call it only through its `api` package. `ModuleBoundariesTest` enforces this.
 - In Session 4 each module becomes its own service, and each schema its own database.
 
-## First-draft class diagram (filled in during Sessions 2–3)
+## User module classes (Session 2)
 
 ```mermaid
 classDiagram
+    direction LR
+
     class User {
         Long id
         String email
         String passwordHash
-        Set~Role~ roles
+        String fullName
+        boolean enabled
+        Instant createdAt
+        addRole(Role)
+        roleNames() List~String~
     }
     class Role {
         Long id
-        String name
+        RoleName name
     }
+    class RoleName {
+        <<enumeration>>
+        USER
+        ADMIN
+    }
+    class RefreshToken {
+        Long id
+        String tokenHash
+        Instant expiresAt
+        boolean revoked
+        isExpired(Instant) boolean
+        revoke()
+    }
+
+    class AuthController {
+        register(RegisterRequest) UserResponse
+        login(LoginRequest) TokenResponse
+        refresh(RefreshRequest) TokenResponse
+        logout(RefreshRequest)
+    }
+    class UserController {
+        me(Jwt) UserResponse
+    }
+    class AdminController {
+        listUsers() List~UserResponse~
+    }
+    class AuthService {
+        register()
+        login()
+        refresh()
+        logout()
+    }
+    class TokenService {
+        createAccessToken(User) String
+        newRefreshToken() String
+        sha256(String) String
+    }
+
+    User "*" -- "*" Role : user_roles
+    Role --> RoleName
+    RefreshToken "*" --> "1" User
+
+    AuthController --> AuthService
+    AuthService --> TokenService
+    AuthService --> UserRepository
+    AuthService --> RefreshTokenRepository
+    UserController --> UserRepository
+    AdminController --> UserRepository
+```
+
+Tables (schema `users`): `users`, `roles`, `user_roles`, `refresh_tokens` - see `V2__create_user_tables.sql`.
+
+## Product and order classes (draft, built in Session 3)
+
+```mermaid
+classDiagram
     class Product {
         Long id
         String name
@@ -75,7 +137,6 @@ classDiagram
         BigDecimal unitPrice
     }
 
-    User "*" -- "*" Role
     Category "1" -- "*" Product
     Product "1" -- "1" Inventory
     Order "1" *-- "*" OrderItem
@@ -83,6 +144,15 @@ classDiagram
 
 Note: `Order.userId` and `OrderItem.productId` are plain IDs, not JPA relationships across modules.
 That keeps the modules separable.
+
+## Testing strategy
+
+| Level | Example | What it checks | Speed |
+|---|---|---|---|
+| Unit (JUnit + Mockito) | `AuthServiceTest` | Business rules, e.g. refresh-token reuse revokes all sessions | milliseconds |
+| Web slice (`@WebMvcTest`) | `UserWebLayerTest` | URLs, JSON, validation errors, status codes, security rules; service mocked | ~2 s |
+| Integration (`@SpringBootTest` + Testcontainers) | `AuthFlowIntegrationTest` | Whole flow against a real Postgres | ~20 s |
+| Architecture (ArchUnit) | `ModuleBoundariesTest` | No module reaches into another module's `internal` package | ~1 s |
 
 ## Login and token refresh (Session 2)
 
