@@ -19,6 +19,9 @@ deploy-time comparison on the resume. Fill in your own times.
 Deploying one service only (new in Session 4): `docker compose up --build -d order-service`.
 The others keep running.
 
+Session 6: the baseline for the deploy-time comparison is measured with
+`scripts\measure\manual-deploy-timed.ps1`; results in [deploy-time.md](deploy-time.md).
+
 Session 5 (Azure): `scripts\azure\deploy.ps1` does it in one go: build 6 images, tag them with the
 commit id, push them to Azure Container Registry, `kubectl apply` the manifests, wait for each
 rollout, print the public URL. Then smoke test the public URL. Still started by hand from your PC:

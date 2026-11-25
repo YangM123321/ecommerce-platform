@@ -1,0 +1,41 @@
+# Terraform plan on every change to infra/terraform (Session 6, optional).
+# Shows what WOULD change in Azure. Apply is done from your PC (scripts/azure/infra-up.ps1) after
+# reading the plan: the pipeline's identity is Contributor, which can't create the AcrPull role
+# assignment - giving a pipeline Owner rights is a bigger decision than this project needs.
+trigger:
+  branches:
+    include: [main]
+  paths:
+    include:
+      - infra/terraform
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+  - task: AzureCLI@2
+    displayName: terraform plan
+    inputs:
+      azureSubscription: azure-ecommerce
+      scriptType: bash
+      scriptLocation: inlineScript
+      addSpnToEnvironment: true   # gives the script the service connection's identity
+      inlineScript: |
+        set -euo pipefail
+        if ! command -v terraform > /dev/null; then
+          curl -fsSL -o /tmp/tf.zip https://releases.hashicorp.com/terraform/1.9.8/terraform_1.9.8_linux_amd64.zip
+          sudo unzip -o /tmp/tf.zip -d /usr/local/bin
+        fi
+        export ARM_CLIENT_ID="$servicePrincipalId"
+        export ARM_TENANT_ID="$tenantId"
+        export ARM_SUBSCRIPTION_ID="$(az account show --query id -o tsv)"
+        if [ -n "${idToken:-}" ]; then            # workload identity federation (the default)
+          export ARM_USE_OIDC=true ARM_OIDC_TOKEN="$idToken"
+        else                                      # older secret-based service connection
+          export ARM_CLIENT_SECRET="$servicePrincipalKey"
+        fi
+        cd infra/terraform/azure
+        terraform init -input=false -backend-config=backend.hcl
+        terraform plan -input=false -lock=false

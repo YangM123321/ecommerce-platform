@@ -2,8 +2,15 @@
 # Usage (from the project folder, with `docker compose up --build` running):
 #   powershell -ExecutionPolicy Bypass -File scripts\smoke-test.ps1
 
+# Against Azure:  ... -File scripts\smoke-test.ps1 -BaseUrl http://<IP> -AdminEmail <email> -AdminPassword <password>
+param(
+    [string]$BaseUrl = "http://localhost:8080",
+    [string]$AdminEmail = "admin@local.test",
+    [string]$AdminPassword = "Admin123!"
+)
+
 $ErrorActionPreference = "Stop"
-$base = "http://localhost:8080"
+$base = $BaseUrl.TrimEnd("/")
 $email = "demo$(Get-Random)@test.local"
 
 function Post-Json($path, $body) {
@@ -36,8 +43,8 @@ Write-Host "`n5. Admin endpoint as a normal user (expect 403)" -ForegroundColor 
 try { Get-Auth "/api/admin/users" $tokens.accessToken | Out-Null; Write-Host "   UNEXPECTED: allowed" -ForegroundColor Red }
 catch { Write-Host "   Got $(Get-StatusCode $_) as expected" -ForegroundColor Green }
 
-Write-Host "`n6. Admin endpoint as admin (admin@local.test from docker-compose.yml)" -ForegroundColor Cyan
-$admin = Post-Json "/api/auth/login" @{ email = "admin@local.test"; password = "Admin123!" }
+Write-Host "`n6. Admin endpoint as admin ($AdminEmail)" -ForegroundColor Cyan
+$admin = Post-Json "/api/auth/login" @{ email = $AdminEmail; password = $AdminPassword }
 Get-Auth "/api/admin/users" $admin.accessToken | Format-Table id, email, roles
 
 Write-Host "7. Refresh, then logout, then refresh again (expect 401)" -ForegroundColor Cyan

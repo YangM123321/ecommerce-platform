@@ -1,0 +1,37 @@
+# Defaults for every service. Each service overrides what differs in deploy/values/<service>.yaml.
+# The pipeline adds: --set image.repository=<acr>/<service> --set image.tag=<commit sha>
+
+name: ""                 # required, e.g. order-service
+port: 8080               # required
+
+image:
+  repository: ""         # required, e.g. acrecomxxxx.azurecr.io/order-service
+  tag: ""                # required, the git commit SHA
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+# Load ecommerce-config (from the "platform" release) as environment variables.
+# config-server and discovery-server turn this off.
+useSharedConfig: true
+
+# Keys copied from the ecommerce-secrets Secret into environment variables of the same name.
+secretEnv: []
+
+# Plain environment variables, e.g. { CONFIG_BACKEND: git }.
+extraEnv: {}
+
+javaOptions: "-XX:MaxRAMPercentage=60 -XX:+UseSerialGC"
+
+resources:
+  requests:
+    cpu: 25m             # a reservation for scheduling, not a limit (Session 5: 100m didn't fit)
+    memory: 448Mi
+  limits:
+    memory: 768Mi
+
+# One small node: stop the old pod first, then start the new one (Session 5 deadlock fix).
+# With 2+ nodes or replicas use maxSurge 1 / maxUnavailable 0 for zero downtime.
+strategy:
+  maxSurge: 0
+  maxUnavailable: 1

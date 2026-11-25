@@ -3,8 +3,10 @@
 E-commerce backend built in stages: a modular monolith, then microservices on Azure (AKS),
 then Kafka, Redis and monitoring.
 
-**Current stage: Session 5, the microservices running on Azure Kubernetes Service (AKS),
-with Azure Database for PostgreSQL and product images in Azure Blob Storage.**
+**Current stage: Session 6, CI/CD: every merge to main is built, tested, analysed by SonarCloud and
+deployed to Azure Kubernetes Service by Azure Pipelines. The Azure resources are created with Terraform
+and the services are deployed with Helm.**
+Session 5 put the services on AKS with Azure Database for PostgreSQL and Blob Storage.
 Earlier: Session 4 split the monolith into user, product and order services behind an API gateway,
 with Eureka service discovery and a Config Server.
 
@@ -12,7 +14,8 @@ with Eureka service discovery and a Config Server.
 
 Java 17 · Spring Boot 3.4 · Spring Cloud 2024 (Gateway, Eureka, Config Server, OpenFeign) ·
 Spring Security (JWT) · PostgreSQL 16 · Flyway · Docker Compose · Kubernetes ·
-Azure (AKS, Container Registry, Database for PostgreSQL, Blob Storage) · GitHub Actions ·
+Azure (AKS, Container Registry, Database for PostgreSQL, Blob Storage) · Terraform · Helm ·
+Azure Pipelines · SonarCloud · JaCoCo · GitHub Actions ·
 JUnit 5 · Mockito · Testcontainers
 
 ## Services
@@ -51,16 +54,22 @@ Give the products pictures: `powershell -ExecutionPolicy Bypass -File scripts\up
 
 Stop: `docker compose down` (add `-v` to also wipe the databases).
 
-## Run on Azure (Session 5)
+## Run on Azure
 
 See [docs/azure-deploy.md](docs/azure-deploy.md). In short:
 
 ```
-powershell -ExecutionPolicy Bypass -File scripts\azure\setup-azure.ps1
-powershell -ExecutionPolicy Bypass -File scripts\azure\deploy.ps1
-powershell -ExecutionPolicy Bypass -File scripts\azure\teardown.ps1     (end of every session - it costs money)
+az login
+powershell -ExecutionPolicy Bypass -File scripts\azure\infra-up.ps1      (Terraform creates everything)
+powershell -ExecutionPolicy Bypass -File scripts\azure\deploy.ps1        (deploy by hand)
+powershell -ExecutionPolicy Bypass -File scripts\azure\infra-down.ps1    (end of every session - it costs money)
 ```
-Rebuild and restart just one service: `docker compose up --build -d order-service`.
+
+## CI/CD
+
+Pull requests: GitHub Actions (`mvn verify` + image builds). After a merge: one Azure Pipeline per
+service (build + tests, SonarCloud quality gate, image to ACR, approval, Helm deploy to AKS, smoke test).
+See [docs/ci-cd.md](docs/ci-cd.md) and the measured result in [docs/deploy-time.md](docs/deploy-time.md).
 
 ### Failure demo
 
@@ -134,12 +143,18 @@ user-service/         auth, users, roles           (Flyway -> users_db)
 product-service/      catalog, stock, /internal/*  (Flyway -> catalog_db)
 order-service/        orders, Feign client         (Flyway -> orders_db)
 config-repo/          settings served by config-server (local and azure profiles)
-k8s/                  Kubernetes manifests for AKS (Session 5)
-scripts/azure/        setup, deploy, status and teardown scripts for Azure
+infra/terraform/azure Terraform: every Azure resource (Session 6)
+charts/               Helm charts: "service" (one release per service) and "platform" (config, secrets, ingress)
+deploy/values/        Helm values per service
+.azure-pipelines/     Azure Pipelines: one per service + shared stages template + terraform plan
+scripts/azure/        infra-up / infra-down (Terraform), deploy (by hand), status
+scripts/measure/      timed manual deploy for the deploy-time comparison
 infra/postgres/       creates the three databases on first start
 Dockerfile            one Dockerfile for every module (MODULE build argument)
 docs/architecture.md  component diagram, failure points, design decisions
 docs/azure-deploy.md  Azure architecture, Kubernetes objects, costs, troubleshooting
+docs/ci-cd.md         pipelines, SonarCloud, one-time Azure DevOps setup
+docs/deploy-time.md   manual vs pipeline deploy time
 docs/manual-deploy.md manual deploy steps + timing log
 postman/              Postman collection (via the gateway)
 scripts/              smoke tests and the failure demo

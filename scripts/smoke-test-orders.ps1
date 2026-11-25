@@ -2,8 +2,15 @@
 # Usage (from the project folder, with `docker compose up --build` running):
 #   powershell -ExecutionPolicy Bypass -File scripts\smoke-test-orders.ps1
 
+# Against Azure:  ... -File scripts\smoke-test-orders.ps1 -BaseUrl http://<IP> -AdminEmail <email> -AdminPassword <password>
+param(
+    [string]$BaseUrl = "http://localhost:8080",
+    [string]$AdminEmail = "admin@local.test",
+    [string]$AdminPassword = "Admin123!"
+)
+
 $ErrorActionPreference = "Stop"
-$base = "http://localhost:8080"
+$base = $BaseUrl.TrimEnd("/")
 
 function Send-Json($method, $path, $body, $token) {
     $headers = @{}
@@ -27,7 +34,7 @@ $page.content | Format-Table id, sku, name, price, categoryName, available
 Write-Host "   Page $($page.page + 1) of $($page.totalPages), $($page.totalElements) products in total"
 
 Write-Host "`n2. Admin creates a product with 3 in stock" -ForegroundColor Cyan
-$admin = (Send-Json Post "/api/auth/login" @{ email = "admin@local.test"; password = "Admin123!" } $null).accessToken
+$admin = (Send-Json Post "/api/auth/login" @{ email = $AdminEmail; password = $AdminPassword } $null).accessToken
 $categoryId = (Send-Json Get "/api/categories" $null $null)[0].id
 $product = Send-Json Post "/api/products" @{
     sku = "SMOKE-$(Get-Random)"; name = "Smoke Test Lamp"; description = "created by smoke test"

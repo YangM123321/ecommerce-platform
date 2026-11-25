@@ -1,0 +1,10 @@
+# Non-secret settings shared by the business services and the gateway.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ecommerce-config
+data:
+  SPRING_PROFILES_ACTIVE: {{ .Values.springProfile | quote }}   # config-repo/application-azure.yml
+  CONFIG_SERVER_URL: http://config-server:8888                    # Kubernetes DNS: <service>:<port>
+  EUREKA_URL: http://discovery-server:8761/eureka
+  DB_HOST: {{ required "dbHost is required" .Values.dbHost | quote }}

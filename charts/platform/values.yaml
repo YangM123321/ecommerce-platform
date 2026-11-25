@@ -1,0 +1,15 @@
+springProfile: azure
+dbHost: ""               # required: Terraform output postgres_host
+
+# Filled in from Terraform outputs by infra-up.ps1 (--set). Never committed.
+secrets:
+  DB_USERNAME: ""
+  DB_PASSWORD: ""
+  JWT_SECRET: ""
+  ADMIN_EMAIL: ""
+  ADMIN_PASSWORD: ""
+  STORAGE_CONNECTION_STRING: ""
+
+ingress:
+  className: webapprouting.kubernetes.azure.com
+  maxBodySize: 3m        # 2 MB image uploads

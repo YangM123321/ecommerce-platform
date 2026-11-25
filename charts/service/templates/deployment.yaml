@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.name }}
+  labels:
+    {{- include "service.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ .Values.strategy.maxSurge }}
+      maxUnavailable: {{ .Values.strategy.maxUnavailable }}
+  selector:
+    matchLabels:
+      app: {{ .Values.name }}
+  template:
+    metadata:
+      labels:
+        {{- include "service.labels" . | nindent 8 }}
+    spec:
+      terminationGracePeriodSeconds: 30   # graceful shutdown + Eureka deregistration
+      containers:
+        - name: {{ .Values.name }}
+          image: "{{ required "image.repository is required" .Values.image.repository }}:{{ required "image.tag is required" .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.port }}
+          {{- if .Values.useSharedConfig }}
+          envFrom:
+            - configMapRef:
+                name: ecommerce-config
+          {{- end }}
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: {{ .Values.javaOptions | quote }}
+            {{- range $key, $value := .Values.extraEnv }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- range .Values.secretEnv }}
+            - name: {{ . }}
+              valueFrom:
+                secretKeyRef:
+                  name: ecommerce-secrets
+                  key: {{ . }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          # Spring Boot turns on /actuator/health/liveness and /readiness on Kubernetes.
+          startupProbe:      # slow JVM start: up to 5 minutes before liveness checks begin
+            httpGet: { path: /actuator/health/liveness, port: {{ .Values.port }} }
+            periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:     # hung? restart it
+            httpGet: { path: /actuator/health/liveness, port: {{ .Values.port }} }
+            periodSeconds: 15
+          readinessProbe:    # not ready? no traffic
+            httpGet: { path: /actuator/health/readiness, port: {{ .Values.port }} }
+            periodSeconds: 10

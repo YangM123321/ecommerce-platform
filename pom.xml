@@ -40,6 +40,15 @@
         <testcontainers.version>1.21.4</testcontainers.version>
         <!-- A version from the same time as Spring Boot 3.4, so its Netty matches Boot's -->
         <azure-storage-blob.version>12.29.0</azure-storage-blob.version>
+
+        <!-- Session 6: test coverage (JaCoCo) and code analysis (SonarCloud) -->
+        <jacoco.version>0.8.12</jacoco.version>
+        <sonar-maven-plugin.version>5.0.0.4389</sonar-maven-plugin.version>
+        <sonar.host.url>https://sonarcloud.io</sonar.host.url>
+        <sonar.organization>yangm123321</sonar.organization>
+        <!-- Each service is its own SonarCloud project; see scripts/sonar/create-projects.ps1 -->
+        <sonar.projectKey>YangM123321_ecommerce-${project.artifactId}</sonar.projectKey>
+        <sonar.projectName>ecommerce ${project.artifactId}</sonar.projectName>
     </properties>
 
     <dependencyManagement>
@@ -58,4 +67,40 @@
             </dependency>
         </dependencies>
     </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <!-- "mvn sonar:sonar" -->
+                <plugin>
+                    <groupId>org.sonarsource.scanner.maven</groupId>
+                    <artifactId>sonar-maven-plugin</artifactId>
+                    <version>${sonar-maven-plugin.version}</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+        <plugins>
+            <!-- Measures which lines the tests run; writes target/site/jacoco/jacoco.xml, which SonarCloud reads. -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>
