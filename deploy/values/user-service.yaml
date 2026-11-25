@@ -1,0 +1,3 @@
+name: user-service
+port: 8081
+secretEnv: [DB_USERNAME, DB_PASSWORD, JWT_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD]

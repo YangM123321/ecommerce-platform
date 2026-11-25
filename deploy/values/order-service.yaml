@@ -1,0 +1,3 @@
+name: order-service
+port: 8083
+secretEnv: [DB_USERNAME, DB_PASSWORD, JWT_SECRET]

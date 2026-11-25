@@ -1,10 +1,11 @@
 name: CI
 
+# Session 6: pull-request checks only. After a merge, Azure Pipelines builds, analyses and deploys
+# (.azure-pipelines/). Session 12 adds an AWS/GCP deploy workflow here.
 on:
   pull_request:
     branches: [main]
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   build:

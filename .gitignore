@@ -18,3 +18,10 @@ target/
 
 # Azure names and generated passwords (Session 5) - never commit
 .azure-env.json
+
+# Terraform (Session 6): working files and local state. backend.hcl and terraform.tfvars ARE committed (not secret).
+.terraform/
+*.tfstate
+*.tfstate.*
+tfplan
+crash.log

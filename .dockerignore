@@ -10,3 +10,6 @@ scripts
 .env
 k8s
 infra
+charts
+deploy
+.azure-pipelines

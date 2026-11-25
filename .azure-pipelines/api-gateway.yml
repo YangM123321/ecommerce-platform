@@ -1,0 +1,23 @@
+# api-gateway: build, test, analyse, push, deploy - only when its own files change.
+# Created in Azure DevOps as pipeline "api-gateway" from this file (docs/ci-cd.md).
+trigger:
+  branches:
+    include: [main]
+  paths:
+    include:
+      - api-gateway
+      - pom.xml
+      - Dockerfile
+      - charts/service
+      - deploy/values/api-gateway.yaml
+
+pr: none   # pull requests are checked by GitHub Actions (.github/workflows/ci.yml)
+
+variables:
+  - group: ecommerce-azure
+
+stages:
+  - template: templates/service-stages.yml
+    parameters:
+      service: api-gateway
+      hasTests: true

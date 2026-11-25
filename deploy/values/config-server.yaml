@@ -1,0 +1,10 @@
+# helm upgrade --install config-server charts/service -n ecommerce -f deploy/values/config-server.yaml --set image...
+name: config-server
+port: 8888
+useSharedConfig: false   # its own "git" profile must not be replaced by SPRING_PROFILES_ACTIVE=azure
+extraEnv:
+  CONFIG_BACKEND: git
+  CONFIG_GIT_LABEL: main # deploy.ps1 overrides with the branch you deploy
+resources:
+  requests: { cpu: 25m, memory: 320Mi }
+  limits: { memory: 448Mi }

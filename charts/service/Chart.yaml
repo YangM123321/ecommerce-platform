@@ -1,0 +1,6 @@
+apiVersion: v2
+name: service
+description: One Spring Boot service of ecommerce-platform (Deployment + Service). Installed once per service, each as its own Helm release, so every service deploys on its own.
+type: application
+version: 0.1.0
+appVersion: "0.2.0"

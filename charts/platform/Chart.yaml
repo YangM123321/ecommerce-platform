@@ -1,0 +1,6 @@
+apiVersion: v2
+name: platform
+description: Shared pieces of ecommerce-platform on AKS - settings (ConfigMap), secrets (Secret) and the public Ingress. Installed by scripts/azure/infra-up.ps1 from Terraform outputs.
+type: application
+version: 0.1.0
+appVersion: "0.2.0"

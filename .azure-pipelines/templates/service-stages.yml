@@ -1,0 +1,133 @@
+# The pipeline every service uses: Build (tests + SonarCloud) -> Image (ACR) -> Deploy (Helm to AKS + smoke test).
+# Each service has a tiny pipeline file that sets "service" and its trigger paths.
+#
+# Needs in Azure DevOps (docs/ci-cd.md):
+#   service connection  azure-ecommerce   (Azure Resource Manager, scope: your subscription)
+#   variable group      ecommerce-azure   (ACR_NAME, ACR_LOGIN_SERVER, AKS_RESOURCE_GROUP, AKS_NAME,
+#                                          SONAR_ORGANIZATION, SONAR_TOKEN as a secret)
+#   environment         production        (with an Approvals check)
+
+parameters:
+  - name: service
+    type: string
+  - name: hasTests
+    type: boolean
+    default: true
+
+stages:
+  - stage: Build
+    displayName: Build, test, analyse
+    jobs:
+      - job: build
+        displayName: mvn install + SonarCloud
+        pool:
+          vmImage: ubuntu-latest
+        variables:
+          MAVEN_CACHE_FOLDER: $(Pipeline.Workspace)/.m2/repository
+        steps:
+          - checkout: self
+            fetchDepth: 0   # full history: SonarCloud uses it to tell new code from old
+
+          - task: JavaToolInstaller@0
+            displayName: Java 17
+            inputs:
+              versionSpec: "17"
+              jdkArchitectureOption: x64
+              jdkSourceOption: PreInstalled
+
+          - task: Cache@2
+            displayName: Maven cache
+            inputs:
+              key: 'maven | "$(Agent.OS)" | **/pom.xml'
+              restoreKeys: |
+                maven | "$(Agent.OS)"
+              path: $(MAVEN_CACHE_FOLDER)
+
+          # Builds this service and what it needs (common), runs its unit + Testcontainers tests,
+          # writes the JaCoCo coverage report. "install" so the Sonar step below finds "common".
+          - bash: mvn -B -Dmaven.repo.local=$(MAVEN_CACHE_FOLDER) -pl ${{ parameters.service }} -am install
+            displayName: Build and test ${{ parameters.service }}
+
+          - ${{ if eq(parameters.hasTests, true) }}:
+              - task: PublishTestResults@2
+                displayName: Publish test report
+                condition: succeededOrFailed()
+                inputs:
+                  testResultsFormat: JUnit
+                  testResultsFiles: "${{ parameters.service }}/target/surefire-reports/TEST-*.xml"
+                  testRunTitle: ${{ parameters.service }}
+
+              - task: PublishCodeCoverageResults@2
+                displayName: Publish coverage
+                inputs:
+                  summaryFileLocation: "${{ parameters.service }}/target/site/jacoco/jacoco.xml"
+
+          # SonarCloud: bugs, code smells, duplication, coverage. qualitygate.wait=true makes this
+          # step - and the whole pipeline - FAIL when the quality gate fails. Nothing gets deployed.
+          - bash: >
+              mvn -B -Dmaven.repo.local=$(MAVEN_CACHE_FOLDER) -pl ${{ parameters.service }} org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
+              -Dsonar.organization=$(SONAR_ORGANIZATION)
+              -Dsonar.qualitygate.wait=true
+              -Dsonar.qualitygate.timeout=300
+            displayName: SonarCloud analysis + quality gate
+            env:
+              SONAR_TOKEN: $(SONAR_TOKEN)   # secret variables must be mapped in explicitly
+
+  - stage: Image
+    displayName: Docker image to ACR
+    dependsOn: Build
+    jobs:
+      - job: image
+        displayName: build + push ${{ parameters.service }}:$(Build.SourceVersion)
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+          - task: AzureCLI@2
+            displayName: docker build + push
+            inputs:
+              azureSubscription: azure-ecommerce
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                az acr login --name "$(ACR_NAME)"
+                image="$(ACR_LOGIN_SERVER)/${{ parameters.service }}:$(Build.SourceVersion)"
+                # Same multi-stage Dockerfile as local builds; the tag is the full commit SHA,
+                # so every image points back to the exact code it was built from.
+                DOCKER_BUILDKIT=1 docker build --build-arg MODULE=${{ parameters.service }} -t "$image" .
+                docker push "$image"
+
+  - stage: Deploy
+    displayName: Deploy to AKS
+    dependsOn: Image
+    jobs:
+      # A deployment job targets an environment; the "production" environment's Approvals
+      # check pauses the run here until someone clicks Approve.
+      - deployment: deploy
+        displayName: helm upgrade ${{ parameters.service }}
+        environment: production
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - task: AzureCLI@2
+                  displayName: helm upgrade + smoke test
+                  inputs:
+                    azureSubscription: azure-ecommerce
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
+                      az aks get-credentials --resource-group "$(AKS_RESOURCE_GROUP)" --name "$(AKS_NAME)" --overwrite-existing
+                      helm upgrade --install ${{ parameters.service }} charts/service \
+                        --namespace ecommerce \
+                        --values deploy/values/${{ parameters.service }}.yaml \
+                        --set image.repository="$(ACR_LOGIN_SERVER)/${{ parameters.service }}" \
+                        --set image.tag="$(Build.SourceVersion)" \
+                        --wait --timeout 10m
+                      kubectl get pods -n ecommerce
+                      bash scripts/smoke/smoke.sh
