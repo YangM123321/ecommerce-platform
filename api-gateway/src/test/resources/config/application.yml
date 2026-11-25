@@ -1,0 +1,12 @@
+# Tests run the gateway alone: no config server, no Eureka.
+spring:
+  cloud:
+    config:
+      enabled: false
+eureka:
+  client:
+    enabled: false
+app:
+  jwt:
+    secret: test-secret-at-least-32-bytes-long-0123456789
+    issuer: ecommerce-platform

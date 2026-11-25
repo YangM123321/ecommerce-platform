@@ -1,0 +1,36 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  config:
+    import: "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+  cloud:
+    gateway:
+      # lb://name = "ask Eureka for a healthy instance of <name>, then load-balance".
+      # /internal/** is deliberately NOT routed: it's service-to-service only.
+      routes:
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/api/auth/**,/api/users/**,/api/admin/**
+        - id: product-service
+          uri: lb://product-service
+          predicates:
+            - Path=/api/products/**,/api/categories/**
+        - id: order-service
+          uri: lb://order-service
+          predicates:
+            - Path=/api/orders/**
+      httpclient:
+        connect-timeout: 2000
+        response-timeout: 5s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway

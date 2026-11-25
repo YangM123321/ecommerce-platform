@@ -21,10 +21,11 @@ jobs:
           java-version: "17"
           cache: maven
 
-      # Runs unit tests, the Testcontainers Postgres test and the ArchUnit boundary rules.
+      # Builds every module and runs every module's tests (unit, web-layer, Testcontainers).
       # Docker is preinstalled on GitHub's ubuntu runners, so Testcontainers works.
-      - name: Build and test
+      - name: Build and test all modules
         run: mvn -B verify
 
-      - name: Check the Docker image builds
-        run: docker build -t ecommerce-platform:ci .
+      # One image per service, all from the same Dockerfile (MODULE build argument).
+      - name: Check every Docker image builds
+        run: docker compose build

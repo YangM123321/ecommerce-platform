@@ -1,0 +1,11 @@
+# api-gateway, every environment. Routes live in the gateway's own application.yml
+# (they're code-like and change with the code); here we only add environment-wide settings.
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway    # /actuator/gateway/routes lists the live routes
+  endpoint:
+    gateway:
+      access: read-only

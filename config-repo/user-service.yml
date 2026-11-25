@@ -1,0 +1,13 @@
+# user-service, every environment. db.* comes from application-<profile>.yml.
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${db.host}:${db.port}/users_db${db.params}
+    username: ${DB_USERNAME:ecommerce}
+    password: ${DB_PASSWORD:ecommerce}
+
+app:
+  # First admin account, created at startup if both are set (see AdminBootstrap).
+  admin:
+    email: ${ADMIN_EMAIL:}
+    password: ${ADMIN_PASSWORD:}

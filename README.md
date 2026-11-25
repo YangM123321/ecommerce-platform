@@ -3,29 +3,56 @@
 E-commerce backend built in stages: a modular monolith, then microservices on Azure (AKS),
 then Kafka, Redis and monitoring.
 
-**Current stage: Session 3, complete modular monolith: users, catalog and orders.**
+**Current stage: Session 4, microservices: user, product and order services behind an API gateway,
+with Eureka service discovery and a Config Server.**
 
 ## Tech stack
 
-Java 17 · Spring Boot 3 · Spring Security (JWT) · PostgreSQL 16 · Flyway · Docker ·
-GitHub Actions · JUnit 5 · Mockito · Testcontainers · ArchUnit
+Java 17 · Spring Boot 3.4 · Spring Cloud 2024 (Gateway, Eureka, Config Server, OpenFeign) ·
+Spring Security (JWT) · PostgreSQL 16 · Flyway · Docker Compose · GitHub Actions ·
+JUnit 5 · Mockito · Testcontainers
+
+## Services
+
+| Service | Port | What it does | Database |
+|---|---|---|---|
+| api-gateway | 8080 | The only public entry point: routes requests, checks JWTs | none |
+| config-server | 8888 | Serves each service's settings from `config-repo/` | none |
+| discovery-server | 8761 | Eureka registry, dashboard at http://localhost:8761 | none |
+| user-service | 8081 (inside Docker) | Register, login, tokens, users, admin | users_db |
+| product-service | 8082 (inside Docker) | Catalog, categories, stock | catalog_db |
+| order-service | 8083 (inside Docker) | Orders; calls product-service for prices and stock | orders_db |
 
 ## Run locally
 
 Requirements: Docker Desktop (or Docker Engine + Compose).
 
 ```bash
-docker compose up --build
+docker compose up --build -d
+docker compose ps          # wait until every service says (healthy), 1-3 minutes
 ```
 
 Then check:
 
 ```bash
-curl http://localhost:8080/api/info
 curl http://localhost:8080/actuator/health
+curl "http://localhost:8080/api/products?size=2"
 ```
 
-Stop: `docker compose down` (add `-v` to also wipe the database).
+Open http://localhost:8761: the Eureka dashboard lists API-GATEWAY, USER-SERVICE,
+PRODUCT-SERVICE and ORDER-SERVICE.
+
+Stop: `docker compose down` (add `-v` to also wipe the databases).
+Rebuild and restart just one service: `docker compose up --build -d order-service`.
+
+### Failure demo
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\failure-demo.ps1
+```
+
+Stops product-service and shows login, profile and order history still work, while browsing and
+ordering return a clean 503. Then starts it again and shows ordering recover.
 
 ## Auth API (Session 2)
 
@@ -59,7 +86,7 @@ Send the access token as `Authorization: Bearer <token>`.
 Postman: import `postman/ecommerce-platform.postman_collection.json` and run the folders in order.
 Docker Compose creates an admin account: `admin@local.test` / `Admin123!` (local only).
 
-Try the whole flow on Windows (app running in Docker):
+Try the whole flow on Windows (stack running in Docker, everything goes through the gateway on 8080):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\smoke-test.ps1
@@ -71,22 +98,30 @@ powershell -ExecutionPolicy Bypass -File scripts\smoke-test-orders.ps1
 Requirements: Java 17, Maven 3.9+, Docker running (Testcontainers starts Postgres).
 
 ```bash
-mvn verify
+mvn verify                       # every module
+mvn -pl order-service -am verify # one service (plus common)
 ```
+
+Tests run each service alone: Config Server and Eureka are switched off, other services are mocked.
 
 ## Project layout
 
 ```
-src/main/java/com/miayang/ecommerce/
-  user/       user module    (schema: users)
-  product/    product module (schema: catalog)
-  order/      order module   (schema: ordering)
-  shared/     cross-cutting code
-src/main/resources/db/migration/   Flyway SQL migrations
-docs/architecture.md               diagrams and design decisions
-docs/manual-deploy.md              manual deploy steps + timing log
-postman/                           Postman collection
-scripts/                           smoke tests
+pom.xml               parent: module list, Spring Boot + Spring Cloud versions
+common/               shared library: JWT config, CurrentUser, error handling, paging
+config-server/        Spring Cloud Config Server
+discovery-server/     Eureka server
+api-gateway/          Spring Cloud Gateway (reactive) + edge JWT check
+user-service/         auth, users, roles           (Flyway -> users_db)
+product-service/      catalog, stock, /internal/*  (Flyway -> catalog_db)
+order-service/        orders, Feign client         (Flyway -> orders_db)
+config-repo/          settings served by config-server (local and azure profiles)
+infra/postgres/       creates the three databases on first start
+Dockerfile            one Dockerfile for every module (MODULE build argument)
+docs/architecture.md  component diagram, failure points, design decisions
+docs/manual-deploy.md manual deploy steps + timing log
+postman/              Postman collection (via the gateway)
+scripts/              smoke tests and the failure demo
 ```
 
-See [docs/architecture.md](docs/architecture.md) for diagrams and module rules.
+See [docs/architecture.md](docs/architecture.md) for diagrams and design decisions.
