@@ -40,6 +40,7 @@ public class GatewaySecurityConfig {
         return http
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)   // stateless JSON API, no cookies
                 .authorizeExchange(auth -> auth
+                        .pathMatchers(HttpMethod.GET, "/", "/index.html", "/favicon.ico").permitAll()   // demo page
                         .pathMatchers("/api/auth/**").permitAll()
                         .pathMatchers("/actuator/health/**", "/actuator/info").permitAll()
                         .pathMatchers(HttpMethod.GET, "/api/products/**", "/api/categories/**").permitAll()

@@ -44,6 +44,10 @@ public class Product {
     @Column(nullable = false)
     private boolean active = true;
 
+    // Public URL of the product image in Blob Storage (Session 5). Null = no image yet.
+    @Column(name = "image_url", length = 500)
+    private String imageUrl;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -85,6 +89,10 @@ public class Product {
         active = false;
     }
 
+    public void changeImage(String newImageUrl) {
+        this.imageUrl = newImageUrl;
+    }
+
     public Long getId() {
         return id;
     }
@@ -111,5 +119,9 @@ public class Product {
 
     public boolean isActive() {
         return active;
+    }
+
+    public String getImageUrl() {
+        return imageUrl;
     }
 }

@@ -8,3 +8,5 @@ docs
 postman
 scripts
 .env
+k8s
+infra

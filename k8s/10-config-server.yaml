@@ -1,0 +1,60 @@
+# Config Server: reads config-repo/ from GitHub (git backend) at the branch being deployed.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: config-server
+  namespace: ecommerce
+  labels: { app: config-server }
+spec:
+  replicas: 1
+  # One small node: stop the old pod first, then start the new one. Running old and new side
+  # by side (the default) needs room for both, and there isn't any. Cost: a few seconds of
+  # downtime per service on each deploy. With 2+ nodes/replicas: maxSurge 1, maxUnavailable 0.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 0, maxUnavailable: 1 }
+  selector:
+    matchLabels: { app: config-server }
+  template:
+    metadata:
+      labels: { app: config-server }
+    spec:
+      containers:
+        - name: config-server
+          image: __ACR__/config-server:__TAG__
+          ports:
+            - containerPort: 8888
+          env:
+            # Not using the shared ConfigMap on purpose: its SPRING_PROFILES_ACTIVE=azure
+            # would replace this server's own "git" profile.
+            - name: CONFIG_BACKEND
+              value: git
+            - name: CONFIG_GIT_LABEL
+              value: __GIT_LABEL__
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=60 -XX:+UseSerialGC"
+          resources:
+            requests: { cpu: 25m, memory: 320Mi }
+            limits: { memory: 448Mi }
+          # Spring Boot turns on /actuator/health/liveness and /readiness when it runs on Kubernetes.
+          startupProbe:      # slow JVM start: allow up to 5 minutes before liveness kicks in
+            httpGet: { path: /actuator/health/liveness, port: 8888 }
+            periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:     # stuck? Kubernetes restarts the container
+            httpGet: { path: /actuator/health/liveness, port: 8888 }
+            periodSeconds: 15
+          readinessProbe:    # not ready? Kubernetes stops sending it traffic
+            httpGet: { path: /actuator/health/readiness, port: 8888 }
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: config-server
+  namespace: ecommerce
+spec:
+  selector: { app: config-server }
+  ports:
+    - port: 8888
+      targetPort: 8888

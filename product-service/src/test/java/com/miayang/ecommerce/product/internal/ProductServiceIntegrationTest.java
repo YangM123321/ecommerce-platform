@@ -2,7 +2,14 @@ package com.miayang.ecommerce.product.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.startsWith;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -25,6 +32,7 @@ import com.miayang.ecommerce.common.web.ApiException;
 import com.miayang.ecommerce.product.TestTokens;
 import com.miayang.ecommerce.product.TestcontainersConfig;
 import com.miayang.ecommerce.product.internal.StockDtos.StockLine;
+import com.miayang.ecommerce.product.storage.ImageStorage;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,6 +41,8 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
@@ -53,6 +63,10 @@ class ProductServiceIntegrationTest {
 
     @Autowired
     StockService stockService;
+
+    // Blob Storage is replaced by a mock: these tests check OUR rules, not Azure.
+    @MockitoBean
+    ImageStorage imageStorage;
 
     String admin;
     String user;
@@ -173,6 +187,58 @@ class ProductServiceIntegrationTest {
     }
 
     // ---------- helpers ----------
+
+    // ---------- product images (Session 5) ----------
+
+    static final byte[] PNG = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13};
+
+    @Test
+    void adminUploadsAnImageAndTheProductShowsItsUrl() throws Exception {
+        long productId = createProduct("Photo Lamp", "29.99", 2);
+        when(imageStorage.store(startsWith("products/" + productId + "/"), any(), eq("image/png")))
+                .thenReturn("https://example.blob.core.windows.net/product-images/lamp.png");
+
+        mvc.perform(multipart("/api/products/" + productId + "/image")
+                        .file(new MockMultipartFile("file", "lamp.png", "image/png", PNG))
+                        .header("Authorization", admin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.imageUrl").value("https://example.blob.core.windows.net/product-images/lamp.png"));
+
+        mvc.perform(get("/api/products/" + productId))
+                .andExpect(jsonPath("$.imageUrl").value("https://example.blob.core.windows.net/product-images/lamp.png"));
+    }
+
+    @Test
+    void normalUsersCannotUploadImages() throws Exception {
+        long productId = createProduct("No Photo Lamp", "29.99", 2);
+
+        mvc.perform(multipart("/api/products/" + productId + "/image")
+                        .file(new MockMultipartFile("file", "lamp.png", "image/png", PNG))
+                        .header("Authorization", user))
+                .andExpect(status().isForbidden());
+        verify(imageStorage, never()).store(any(), any(), any());
+    }
+
+    @Test
+    void aFileThatIsNotReallyAnImageIsRejected() throws Exception {
+        long productId = createProduct("Fake Photo Lamp", "29.99", 2);
+        byte[] notAnImage = "MZ this is really a program".getBytes();
+
+        // Named .png and labelled image/png - but the bytes say otherwise.
+        mvc.perform(multipart("/api/products/" + productId + "/image")
+                        .file(new MockMultipartFile("file", "cat.png", "image/png", notAnImage))
+                        .header("Authorization", admin))
+                .andExpect(status().isUnsupportedMediaType());
+        verify(imageStorage, never()).store(any(), any(), any());
+    }
+
+    @Test
+    void imageForAnUnknownProductIs404() throws Exception {
+        mvc.perform(multipart("/api/products/999999/image")
+                        .file(new MockMultipartFile("file", "lamp.png", "image/png", PNG))
+                        .header("Authorization", admin))
+                .andExpect(status().isNotFound());
+    }
 
     private long createProduct(String name, String price, int stock) throws Exception {
         return readJson(mvc.perform(post("/api/products").header("Authorization", admin)

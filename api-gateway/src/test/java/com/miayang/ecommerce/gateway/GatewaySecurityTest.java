@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
@@ -75,5 +76,10 @@ class GatewaySecurityTest {
     @Test
     void loginNeedsNoToken() {
         web.post().uri("/api/auth/login").exchange().expectStatus().isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    @Test
+    void demoPageIsServedWithoutAToken() {
+        web.get().uri("/").accept(MediaType.TEXT_HTML).exchange().expectStatus().isOk();
     }
 }

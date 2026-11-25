@@ -38,6 +38,8 @@
         <spring-cloud.version>2024.0.1</spring-cloud.version>
         <!-- Docker Engine 29+ needs Testcontainers 1.21.4+ (older versions use a Docker API it rejects) -->
         <testcontainers.version>1.21.4</testcontainers.version>
+        <!-- A version from the same time as Spring Boot 3.4, so its Netty matches Boot's -->
+        <azure-storage-blob.version>12.29.0</azure-storage-blob.version>
     </properties>
 
     <dependencyManagement>

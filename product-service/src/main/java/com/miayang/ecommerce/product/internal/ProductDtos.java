@@ -53,7 +53,8 @@ public final class ProductDtos {
             BigDecimal price,
             Long categoryId,
             String categoryName,
-            int available) {
+            int available,
+            String imageUrl) {
 
         public static ProductResponse from(Product product, int available) {
             return new ProductResponse(
@@ -64,7 +65,8 @@ public final class ProductDtos {
                     product.getPrice(),
                     product.getCategory().getId(),
                     product.getCategory().getName(),
-                    available);
+                    available,
+                    product.getImageUrl());
         }
     }
 }

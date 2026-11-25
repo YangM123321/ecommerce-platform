@@ -3,13 +3,16 @@
 E-commerce backend built in stages: a modular monolith, then microservices on Azure (AKS),
 then Kafka, Redis and monitoring.
 
-**Current stage: Session 4, microservices: user, product and order services behind an API gateway,
-with Eureka service discovery and a Config Server.**
+**Current stage: Session 5, the microservices running on Azure Kubernetes Service (AKS),
+with Azure Database for PostgreSQL and product images in Azure Blob Storage.**
+Earlier: Session 4 split the monolith into user, product and order services behind an API gateway,
+with Eureka service discovery and a Config Server.
 
 ## Tech stack
 
 Java 17 · Spring Boot 3.4 · Spring Cloud 2024 (Gateway, Eureka, Config Server, OpenFeign) ·
-Spring Security (JWT) · PostgreSQL 16 · Flyway · Docker Compose · GitHub Actions ·
+Spring Security (JWT) · PostgreSQL 16 · Flyway · Docker Compose · Kubernetes ·
+Azure (AKS, Container Registry, Database for PostgreSQL, Blob Storage) · GitHub Actions ·
 JUnit 5 · Mockito · Testcontainers
 
 ## Services
@@ -20,7 +23,7 @@ JUnit 5 · Mockito · Testcontainers
 | config-server | 8888 | Serves each service's settings from `config-repo/` | none |
 | discovery-server | 8761 | Eureka registry, dashboard at http://localhost:8761 | none |
 | user-service | 8081 (inside Docker) | Register, login, tokens, users, admin | users_db |
-| product-service | 8082 (inside Docker) | Catalog, categories, stock | catalog_db |
+| product-service | 8082 (inside Docker) | Catalog, categories, stock, product images | catalog_db + Blob Storage |
 | order-service | 8083 (inside Docker) | Orders; calls product-service for prices and stock | orders_db |
 
 ## Run locally
@@ -42,7 +45,21 @@ curl "http://localhost:8080/api/products?size=2"
 Open http://localhost:8761: the Eureka dashboard lists API-GATEWAY, USER-SERVICE,
 PRODUCT-SERVICE and ORDER-SERVICE.
 
+Open http://localhost:8080/ for a small storefront page (products with their pictures).
+Give the products pictures: `powershell -ExecutionPolicy Bypass -File scripts\upload-demo-images.ps1`
+(images go to Azurite, the local Blob Storage emulator).
+
 Stop: `docker compose down` (add `-v` to also wipe the databases).
+
+## Run on Azure (Session 5)
+
+See [docs/azure-deploy.md](docs/azure-deploy.md). In short:
+
+```
+powershell -ExecutionPolicy Bypass -File scripts\azure\setup-azure.ps1
+powershell -ExecutionPolicy Bypass -File scripts\azure\deploy.ps1
+powershell -ExecutionPolicy Bypass -File scripts\azure\teardown.ps1     (end of every session - it costs money)
+```
 Rebuild and restart just one service: `docker compose up --build -d order-service`.
 
 ### Failure demo
@@ -77,6 +94,7 @@ Send the access token as `Authorization: Bearer <token>`.
 | PUT | `/api/products/{id}` | ADMIN | Update name, description, price, category |
 | DELETE | `/api/products/{id}` | ADMIN | Deactivate (soft delete) |
 | POST | `/api/products/{id}/stock` | ADMIN | Add stock |
+| POST | `/api/products/{id}/image` | ADMIN | Upload a product image (multipart field `file`; JPEG, PNG or WebP, max 2 MB). Returns `imageUrl` |
 | GET / POST | `/api/categories` | none / ADMIN | List / create categories |
 | POST | `/api/orders` | logged in | Place an order (all items or nothing) |
 | GET | `/api/orders` | logged in | My orders, newest first, paged |
@@ -116,9 +134,12 @@ user-service/         auth, users, roles           (Flyway -> users_db)
 product-service/      catalog, stock, /internal/*  (Flyway -> catalog_db)
 order-service/        orders, Feign client         (Flyway -> orders_db)
 config-repo/          settings served by config-server (local and azure profiles)
+k8s/                  Kubernetes manifests for AKS (Session 5)
+scripts/azure/        setup, deploy, status and teardown scripts for Azure
 infra/postgres/       creates the three databases on first start
 Dockerfile            one Dockerfile for every module (MODULE build argument)
 docs/architecture.md  component diagram, failure points, design decisions
+docs/azure-deploy.md  Azure architecture, Kubernetes objects, costs, troubleshooting
 docs/manual-deploy.md manual deploy steps + timing log
 postman/              Postman collection (via the gateway)
 scripts/              smoke tests and the failure demo

@@ -2,6 +2,7 @@ package com.miayang.ecommerce.product.internal;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import com.miayang.ecommerce.product.internal.ProductDtos.CategoryResponse;
@@ -11,6 +12,7 @@ import com.miayang.ecommerce.product.internal.ProductDtos.ProductResponse;
 import com.miayang.ecommerce.product.internal.ProductDtos.UpdateProductRequest;
 import com.miayang.ecommerce.common.web.ApiException;
 import com.miayang.ecommerce.common.web.PageResponse;
+import com.miayang.ecommerce.product.storage.ImageStorage;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -28,11 +30,14 @@ public class ProductService {
     private final ProductRepository products;
     private final CategoryRepository categories;
     private final InventoryRepository inventory;
+    private final ImageStorage imageStorage;
 
-    public ProductService(ProductRepository products, CategoryRepository categories, InventoryRepository inventory) {
+    public ProductService(ProductRepository products, CategoryRepository categories, InventoryRepository inventory,
+                          ImageStorage imageStorage) {
         this.products = products;
         this.categories = categories;
         this.inventory = inventory;
+        this.imageStorage = imageStorage;
     }
 
     @Transactional(readOnly = true)
@@ -80,6 +85,30 @@ public class ProductService {
                 .filter(Product::isActive)
                 .orElseThrow(() -> productNotFound(id));
         product.update(request.name().trim(), request.description(), request.price(), findCategory(request.categoryId()));
+        return ProductResponse.from(product, availableStock(id));
+    }
+
+    /**
+     * Upload or replace a product's image. The file goes to Blob Storage under a new random name
+     * (so browsers never show a cached old image); the product row stores the public URL.
+     * Note: the old blob is kept. Cleaning up unused images would be a background job.
+     */
+    public ProductResponse changeImage(Long id, byte[] content) {
+        Product product = products.findById(id)
+                .filter(Product::isActive)
+                .orElseThrow(() -> productNotFound(id));
+        if (content.length == 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "The image file is empty");
+        }
+        if (content.length > ImageFiles.MAX_BYTES) {
+            throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "Images can be at most 2 MB");
+        }
+        ImageFiles.ImageType type = ImageFiles.detect(content)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                        "Only JPEG, PNG and WebP images are accepted"));
+
+        String path = "products/" + id + "/" + UUID.randomUUID() + "." + type.extension();
+        product.changeImage(imageStorage.store(path, content, type.contentType()));
         return ProductResponse.from(product, availableStock(id));
     }
 

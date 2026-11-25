@@ -6,6 +6,7 @@
 # Start:   docker compose up --build -d
 # Status:  docker compose ps            Eureka dashboard: http://localhost:8761
 # Reset:   docker compose down -v       (wipes the databases)
+# Session 5 adds Azurite (Azure Blob Storage emulator) for product images.
 # Later sessions add: Kafka (7), Redis (8), ELK + Prometheus + Grafana (9).
 
 x-service-env: &service-env
@@ -40,6 +41,15 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+
+  # Azure Blob Storage emulator, so image uploads work locally with the SAME code as on Azure.
+  # devstoreaccount1 and its key are Azurite's public, well-known dev credentials (not a secret).
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    container_name: ecommerce-azurite
+    command: azurite-blob --blobHost 0.0.0.0 --loose --skipApiVersionCheck
+    ports:
+      - "10000:10000"
 
   config-server:
     build: { context: ., args: { MODULE: config-server } }
@@ -84,7 +94,12 @@ services:
     container_name: ecommerce-product-service
     environment:
       <<: *service-env
-    depends_on: *infra-ready
+      STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+      # The app reaches Azurite as "azurite", but your browser reaches it as "localhost".
+      STORAGE_PUBLIC_BASE_URL: http://localhost:10000/devstoreaccount1/product-images
+    depends_on:
+      <<: *infra-ready
+      azurite: { condition: service_started }
     healthcheck:
       <<: *healthcheck
       test: ["CMD-SHELL", "wget -qO- http://localhost:8082/actuator/health | grep -q UP"]
