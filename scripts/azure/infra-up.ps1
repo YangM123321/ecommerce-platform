@@ -28,7 +28,7 @@ foreach ($ns in "Microsoft.ContainerService", "Microsoft.ContainerRegistry", "Mi
 Push-Location $TfDir
 try {
     Write-Title "terraform init"
-    Invoke-Step "terraform init" { terraform init -input=false -backend-config=backend.hcl }
+    Invoke-Step "terraform init" { terraform init -input=false "-backend-config=backend.hcl" }
 
     # Plan first and save it; apply exactly that plan. (Read it: "Plan: N to add, 0 to change, 0 to destroy".)
     Write-Title "terraform plan"

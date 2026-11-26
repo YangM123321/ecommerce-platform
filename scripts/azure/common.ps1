@@ -59,7 +59,7 @@ function Get-TfOutputs {
     Push-Location $TfDir
     try {
         if (-not (Test-Path ".terraform")) {
-            Invoke-Step "terraform init" { terraform init -input=false -backend-config=backend.hcl } | Out-Null
+            Invoke-Step "terraform init" { terraform init -input=false "-backend-config=backend.hcl" } | Out-Null
         }
         $json = Invoke-Step "terraform output" { terraform output -json }
     } finally { Pop-Location }
