@@ -19,7 +19,7 @@ if (-not $Force) {
 
 Push-Location $TfDir
 try {
-    Invoke-Step "terraform init" { terraform init -input=false -backend-config=backend.hcl }
+    Invoke-Step "terraform init" { terraform init -input=false "-backend-config=backend.hcl" }
     Write-Title "terraform destroy (about 10-15 minutes)"
     Invoke-Step "terraform destroy" { terraform destroy -input=false -auto-approve }
 } finally { Pop-Location }

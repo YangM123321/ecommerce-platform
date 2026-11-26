@@ -25,3 +25,4 @@ target/
 *.tfstate.*
 tfplan
 crash.log
+*Tokens*.txt
